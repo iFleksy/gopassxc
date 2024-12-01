@@ -34,6 +34,7 @@ type Entry struct {
 	Name     string `json:"Name"`
 	Password string `json:"password"`
 	UUID     string `json"uuid"`
+	TOTP     string `json:"totp,omitempty"`
 }
 
 type EntriesResponse struct {
@@ -89,6 +90,13 @@ func (c *Client) sendEncryptedMessage(msg Message) (ServerResponse, error) {
 	if err != nil {
 		return response, err
 	}
+
+	rawRequest, err := json.Marshal(msg)
+	if err != nil {
+		return response, err
+	}
+	fmt.Printf("send request: %s\n", string(rawRequest))
+
 	msg = Message{
 		Action:  msg.Action,
 		Message: base64.StdEncoding.EncodeToString(encryptedMsg[nacl.NonceSize:]),
@@ -237,4 +245,18 @@ func (c *Client) GetLogins(url string) ([]*Entry, error) {
 	}
 
 	return data.Entries, nil
+}
+
+func (c *Client) GeneratePassword() error {
+	msg := Message{
+		Action: ActionGeneratePassword,
+		Keys: []*MessageKeys{
+			{
+				ID:  c.crypt.AssociatedName,
+				Key: NaclKeyToB64(c.crypt.AssociatedKey),
+			},
+		},
+	}
+	_, err := c.sendEncryptedMessage(msg)
+	return err
 }

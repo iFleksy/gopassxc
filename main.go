@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 
 	"github.com/iFleksy/gopassxc/pkg/client"
@@ -10,6 +11,12 @@ import (
 )
 
 func main() {
+
+	var url string
+
+	flag.StringVar(&url, "u", "", "URL for search")
+	flag.Parse()
+
 	configDir, err := helpers.GetStoragePath()
 	if err != nil {
 		panic(err)
@@ -64,7 +71,7 @@ func main() {
 	assoName, assoKey := c.GetAssociatedProfile()
 	fmt.Printf("assoName: %s, assoKey: %s\n", assoName, assoKey)
 
-	e, err := c.GetLogins("https://test.local")
+	e, err := c.GetLogins(url)
 	if err != nil {
 		panic(err)
 	}
