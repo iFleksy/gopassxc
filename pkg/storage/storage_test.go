@@ -104,9 +104,9 @@ func TestStorage_Commit(t *testing.T) {
 		{
 			name: "successful Commit with DefaultProfile profile",
 			storage: &Storage{
-				DefaultProfile:     "test_profile",
-				Profiles:    []*Profile{{Name: "test_profile", Key: "test_key"}},
-				StoragePath: path.Join(tempDir, "config1.json"),
+				DefaultProfile: "test_profile",
+				Profiles:       []*Profile{{Name: "test_profile", Key: "test_key"}},
+				StoragePath:    path.Join(tempDir, "config1.json"),
 			},
 			wantErr: false,
 			validate: func(t *testing.T, path string) {
@@ -152,9 +152,9 @@ func TestStorage_Commit(t *testing.T) {
 		{
 			name: "successful Commit with multiple profiles",
 			storage: &Storage{
-				DefaultProfile:     "test_profile1",
-				Profiles:    []*Profile{{Name: "test_profile1", Key: "test_key1"}, {Name: "test_profile2", Key: "test_key2"}},
-				StoragePath: path.Join(tempDir, "config2.json"),
+				DefaultProfile: "test_profile1",
+				Profiles:       []*Profile{{Name: "test_profile1", Key: "test_key1"}, {Name: "test_profile2", Key: "test_key2"}},
+				StoragePath:    path.Join(tempDir, "config2.json"),
 			},
 			wantErr: false,
 			validate: func(t *testing.T, path string) {
@@ -178,9 +178,9 @@ func TestStorage_Commit(t *testing.T) {
 		{
 			name: "Commit to invalid path",
 			storage: &Storage{
-				DefaultProfile:     "test_profile",
-				Profiles:    []*Profile{{Name: "test_profile", Key: "test_key"}},
-				StoragePath: path.Join(tempDir, "invalid", "config.json"),
+				DefaultProfile: "test_profile",
+				Profiles:       []*Profile{{Name: "test_profile", Key: "test_key"}},
+				StoragePath:    path.Join(tempDir, "invalid", "config.json"),
 			},
 			wantErr: true,
 		},
@@ -243,13 +243,6 @@ func TestStorage_Load(t *testing.T) {
 				assert.Equal(t, "test_profile2", s.Profiles[1].Name)
 				assert.Equal(t, "test_key2", s.Profiles[1].Key)
 			},
-		},
-		{
-			name: "file not found",
-			storage: &Storage{
-				StoragePath: path.Join(tempDir, "non_existent.json"),
-			},
-			wantErr: true,
 		},
 		{
 			name:      "invalid json",

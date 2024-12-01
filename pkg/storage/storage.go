@@ -20,12 +20,12 @@ type Storage struct {
 
 func (s *Storage) Load() error {
 	if _, err := os.Stat(s.StoragePath); os.IsNotExist(err) {
-		return err
+		return nil
 	}
 
 	fp, err := os.Open(s.StoragePath)
 	if err != nil {
-		return errors.Errorf("Error opening file: %s", err)
+		return errors.Errorf("Error opening file")
 	}
 	defer fp.Close()
 
