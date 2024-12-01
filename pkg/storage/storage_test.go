@@ -2,9 +2,12 @@ package storage
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
+	"path"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStorage_AddProfile(t *testing.T) {
@@ -12,32 +15,24 @@ func TestStorage_AddProfile(t *testing.T) {
 		name       string
 		storage    *Storage
 		newProfile *Profile
-		validate   func(*testing.T, *Storage)
 	}{
 		{
 			name: "add new Profile",
 			storage: &Storage{
-				Default: "default",
+				DefaultProfile: "default_profile",
 				Profiles: []*Profile{
-					{Name: "default", Key: "key"},
+					{Name: "default_profile", Key: "key"},
 				},
 			},
 			newProfile: &Profile{Name: "test", Key: "key"},
-			validate: func(t *testing.T, s *Storage) {
-				if len(s.Profiles) != 2 {
-					t.Fatalf("got %d profiles, want 2", len(s.Profiles))
-				}
-				if s.Profiles[1].Name != "test" {
-					t.Fatalf("got %s, want %s", s.Profiles[1].Name, "test")
-				}
-			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.storage.AddProfile(tt.newProfile)
-			tt.validate(t, tt.storage)
+			assert.Len(t, tt.storage.Profiles, 2)
+			assert.Equal(t, tt.newProfile, tt.storage.Profiles[1])
 		})
 	}
 }
@@ -49,56 +44,54 @@ func TestStorageExtractProfile(t *testing.T) {
 		storage  *Storage
 		wantName string
 		wantErr  bool
-		validate func(*testing.T, *Profile)
+		want     *Profile
+		errMsg   string
 	}{
 		{
 			name: "existing profile",
 			storage: &Storage{
-				Default: "default",
+				DefaultProfile: "default_profile",
 				Profiles: []*Profile{
-					{Name: "default", Key: "key"},
+					{Name: "default_profile", Key: "key"},
 					{Name: "test", Key: "key"},
 				},
 			},
 			wantName: "test",
 			wantErr:  false,
-			validate: func(t *testing.T, p *Profile) {
-				if p == nil {
-					t.Fatalf("got nil, want %s", "test")
-				}
-				if p.Name != "test" {
-					t.Fatalf("got %s, want %s", p.Name, "test")
-				}
-			},
+			want:     &Profile{Name: "test", Key: "key"},
 		},
 		{
 			name: "not found profile",
 			storage: &Storage{
-				Default: "default",
+				DefaultProfile: "default_profile",
 				Profiles: []*Profile{
-					{Name: "default", Key: "key"},
+					{Name: "default_profile", Key: "key"},
 					{Name: "test", Key: "key"},
 				},
 			},
 			wantName: "test2",
 			wantErr:  true,
-			validate: func(t *testing.T, p *Profile) {},
+			want:     nil,
+			errMsg:   "not found profile with name test2",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.storage.ExtractProfile(tt.wantName)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Storage.ExtractProfile() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.EqualError(t, err, tt.errMsg)
+				assert.Nil(t, got)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.want, got)
 			}
-			tt.validate(t, got)
 		})
 	}
 }
 
-func TestStorage_Save(t *testing.T) {
+func TestStorage_Commit(t *testing.T) {
 	// Create a temporary directory for tests
 	tempDir := t.TempDir()
 
@@ -109,38 +102,36 @@ func TestStorage_Save(t *testing.T) {
 		validate func(*testing.T, string)
 	}{
 		{
-			name: "successful save with default profile",
+			name: "successful Commit with DefaultProfile profile",
 			storage: &Storage{
-				Default:     "test_profile",
+				DefaultProfile:     "test_profile",
 				Profiles:    []*Profile{{Name: "test_profile", Key: "test_key"}},
-				StoragePath: fmt.Sprintf("%s/config1.json", tempDir),
+				StoragePath: path.Join(tempDir, "config1.json"),
 			},
 			wantErr: false,
 			validate: func(t *testing.T, path string) {
-				// Read the saved file
+				// Read the Commitd file
 				data, err := os.ReadFile(path)
-				if err != nil {
-					t.Fatalf("Failed to read saved file: %v", err)
-				}
+				require.NoError(t, err)
 
-				var saved map[string]interface{}
-				if err := json.Unmarshal(data, &saved); err != nil {
-					t.Fatalf("Failed to unmarshal saved data: %v", err)
+				var Commitd map[string]interface{}
+				if err := json.Unmarshal(data, &Commitd); err != nil {
+					t.Fatalf("Failed to unmarshal Commitd data: %v", err)
 				}
 
 				// Check StoragePath is not in JSON
-				if _, exists := saved["StoragePath"]; exists {
-					t.Error("StoragePath should not be present in saved JSON")
+				if _, exists := Commitd["StoragePath"]; exists {
+					t.Error("StoragePath should not be present in Commitd JSON")
 				}
 
 				// Check required fields
-				if def, ok := saved["default"]; !ok {
-					t.Error("default field missing from JSON")
+				if def, ok := Commitd["default_profile"]; !ok {
+					t.Error("DefaultProfile field missing from JSON")
 				} else if def != "test_profile" {
-					t.Errorf("default field = %v, want %v", def, "test_profile")
+					t.Errorf("DefaultProfile field = %v, want %v", def, "test_profile")
 				}
 
-				if profiles, ok := saved["profiles"]; !ok {
+				if profiles, ok := Commitd["profiles"]; !ok {
 					t.Error("profiles field missing from JSON")
 				} else if profs, ok := profiles.([]interface{}); !ok {
 					t.Error("profiles is not an array")
@@ -159,28 +150,23 @@ func TestStorage_Save(t *testing.T) {
 			},
 		},
 		{
-			name: "successful save with multiple profiles",
+			name: "successful Commit with multiple profiles",
 			storage: &Storage{
-				Default: "profile1",
-				Profiles: []*Profile{
-					{Name: "profile1", Key: "key1"},
-					{Name: "profile2", Key: "key2"},
-				},
-				StoragePath: fmt.Sprintf("%s/config2.json", tempDir),
+				DefaultProfile:     "test_profile1",
+				Profiles:    []*Profile{{Name: "test_profile1", Key: "test_key1"}, {Name: "test_profile2", Key: "test_key2"}},
+				StoragePath: path.Join(tempDir, "config2.json"),
 			},
 			wantErr: false,
 			validate: func(t *testing.T, path string) {
 				data, err := os.ReadFile(path)
-				if err != nil {
-					t.Fatalf("Failed to read saved file: %v", err)
+				require.NoError(t, err)
+
+				var Commitd map[string]interface{}
+				if err := json.Unmarshal(data, &Commitd); err != nil {
+					t.Fatalf("Failed to unmarshal Commitd data: %v", err)
 				}
 
-				var saved map[string]interface{}
-				if err := json.Unmarshal(data, &saved); err != nil {
-					t.Fatalf("Failed to unmarshal saved data: %v", err)
-				}
-
-				if profiles, ok := saved["profiles"]; !ok {
+				if profiles, ok := Commitd["profiles"]; !ok {
 					t.Error("profiles field missing from JSON")
 				} else if profs, ok := profiles.([]interface{}); !ok {
 					t.Error("profiles is not an array")
@@ -190,11 +176,11 @@ func TestStorage_Save(t *testing.T) {
 			},
 		},
 		{
-			name: "save to invalid path",
+			name: "Commit to invalid path",
 			storage: &Storage{
-				Default:     "test_profile",
+				DefaultProfile:     "test_profile",
 				Profiles:    []*Profile{{Name: "test_profile", Key: "test_key"}},
-				StoragePath: fmt.Sprintf("%s/nonexistent/config.json", tempDir),
+				StoragePath: path.Join(tempDir, "invalid", "config.json"),
 			},
 			wantErr: true,
 		},
@@ -202,15 +188,15 @@ func TestStorage_Save(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.storage.Save()
+			err := tt.storage.Commit()
 
 			// Check error condition
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Storage.Save() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("Storage.Commit() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
-			// If we expect success, validate the saved file
+			// If we expect success, validate the Commitd file
 			if !tt.wantErr && tt.validate != nil {
 				tt.validate(t, tt.storage.StoragePath)
 			}
@@ -229,71 +215,48 @@ func TestStorage_Load(t *testing.T) {
 		validate  func(*testing.T, *Storage)
 	}{
 		{
-			name: "successful load with default profile",
-			setupJSON: `{
-				"default": "test_profile",
-				"profiles": [
-					{"name": "test_profile", "key": "test_key"}
-				]
-			}`,
-			storage: &Storage{},
+			name:      "successful load with DefaultProfile profile",
+			setupJSON: `{"default_profile":"test_profile","profiles":[{"name":"test_profile","key":"test_key"}]}`,
+			storage: &Storage{
+				StoragePath: path.Join(tempDir, "config1.json"),
+			},
 			wantErr: false,
 			validate: func(t *testing.T, s *Storage) {
-				if s.Default != "test_profile" {
-					t.Errorf("Default = %v, want %v", s.Default, "test_profile")
-				}
-				if len(s.Profiles) != 1 {
-					t.Errorf("got %d profiles, want 1", len(s.Profiles))
-					return
-				}
-				if s.Profiles[0].Name != "test_profile" {
-					t.Errorf("Profile name = %v, want %v", s.Profiles[0].Name, "test_profile")
-				}
-				if s.Profiles[0].Key != "test_key" {
-					t.Errorf("Profile key = %v, want %v", s.Profiles[0].Key, "test_key")
-				}
+				assert.Equal(t, "test_profile", s.DefaultProfile)
+				assert.Len(t, s.Profiles, 1)
+				assert.Equal(t, "test_profile", s.Profiles[0].Name)
+				assert.Equal(t, "test_key", s.Profiles[0].Key)
 			},
 		},
 		{
-			name: "successful load with multiple profiles",
-			setupJSON: `{
-				"default": "profile1",
-				"profiles": [
-					{"name": "profile1", "key": "key1"},
-					{"name": "profile2", "key": "key2"}
-				]
-			}`,
-			storage: &Storage{},
+			name:      "successful load with multiple profiles",
+			setupJSON: `{"default_profile":"test_profile1","profiles":[{"name":"test_profile1","key":"test_key1"},{"name":"test_profile2","key":"test_key2"}]}`,
+			storage: &Storage{
+				StoragePath: path.Join(tempDir, "config2.json"),
+			},
 			wantErr: false,
 			validate: func(t *testing.T, s *Storage) {
-				if s.Default != "profile1" {
-					t.Errorf("Default = %v, want %v", s.Default, "profile1")
-				}
-				if len(s.Profiles) != 2 {
-					t.Errorf("got %d profiles, want 2", len(s.Profiles))
-					return
-				}
-				if s.Profiles[0].Name != "profile1" || s.Profiles[1].Name != "profile2" {
-					t.Errorf("Profile names incorrect, got %v and %v, want profile1 and profile2",
-						s.Profiles[0].Name, s.Profiles[1].Name)
-				}
+				assert.Equal(t, "test_profile1", s.DefaultProfile)
+				assert.Len(t, s.Profiles, 2)
+				assert.Equal(t, "test_profile1", s.Profiles[0].Name)
+				assert.Equal(t, "test_key1", s.Profiles[0].Key)
+				assert.Equal(t, "test_profile2", s.Profiles[1].Name)
+				assert.Equal(t, "test_key2", s.Profiles[1].Key)
 			},
 		},
 		{
-			name:      "file not found",
-			storage:   &Storage{},
-			setupJSON: "",
-			wantErr:   true,
+			name: "file not found",
+			storage: &Storage{
+				StoragePath: path.Join(tempDir, "non_existent.json"),
+			},
+			wantErr: true,
 		},
 		{
-			name: "invalid json",
-			setupJSON: `{
-				"default": "test_profile",
-				"profiles": [
-					{"name": "test_profile", "key": "test_key"
-				]
-			}`,
-			storage: &Storage{},
+			name:      "invalid json",
+			setupJSON: `invalid json content`,
+			storage: &Storage{
+				StoragePath: path.Join(tempDir, "invalid.json"),
+			},
 			wantErr: true,
 		},
 	}
@@ -301,12 +264,9 @@ func TestStorage_Load(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup test file if JSON content is provided
-			tt.storage.StoragePath = fmt.Sprintf("%s/%s.json", tempDir, tt.name)
 			if tt.setupJSON != "" {
 				err := os.WriteFile(tt.storage.StoragePath, []byte(tt.setupJSON), 0600)
-				if err != nil {
-					t.Fatalf("Failed to create test file: %v", err)
-				}
+				require.NoError(t, err)
 			}
 
 			// Run the test

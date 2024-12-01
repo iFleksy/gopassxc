@@ -2,8 +2,9 @@ package storage
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
+
+	"github.com/pkg/errors"
 )
 
 type Profile struct {
@@ -12,36 +13,32 @@ type Profile struct {
 }
 
 type Storage struct {
-	Default     string     `json:"default"`
-	Profiles    []*Profile `json:"profiles"`
-	StoragePath string     `json:"-"`
-}
-
-func (s *Storage) checkPath() error {
-	if _, err := os.Stat(s.StoragePath); os.IsNotExist(err) {
-		return err
-	}
-	return nil
+	DefaultProfile string     `json:"default_profile"`
+	Profiles       []*Profile `json:"profiles"`
+	StoragePath    string     `json:"-"`
 }
 
 func (s *Storage) Load() error {
-	if err := s.checkPath(); err != nil {
+	if _, err := os.Stat(s.StoragePath); os.IsNotExist(err) {
 		return err
 	}
 
-	content, err := os.ReadFile(s.StoragePath)
+	fp, err := os.Open(s.StoragePath)
 	if err != nil {
-		return err
+		return errors.Errorf("Error opening file: %s", err)
 	}
+	defer fp.Close()
 
-	err = json.Unmarshal(content, s)
+	decoder := json.NewDecoder(fp)
+
+	err = decoder.Decode(s)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *Storage) Save() error {
+func (s *Storage) Commit() error {
 
 	content, err := json.Marshal(s)
 	if err != nil {
@@ -65,9 +62,9 @@ func (s *Storage) ExtractProfile(name string) (*Profile, error) {
 			return p, nil
 		}
 	}
-	return nil, fmt.Errorf("not found profile with name %s", name)
+	return nil, errors.Errorf("not found profile with name %s", name)
 }
 
 func (s *Storage) ExtractDefaultProfile() (*Profile, error) {
-	return s.ExtractProfile(s.Default)
+	return s.ExtractProfile(s.DefaultProfile)
 }
