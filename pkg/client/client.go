@@ -72,7 +72,7 @@ func NewClient(sockPath string, assoName string, assoB64Key string) Client {
 
 func (c *Client) Connect() error {
 	var err error
-	logrus.Infof("connect to socket %s", c.socketPath)
+	logrus.Debugf("connect to socket %s", c.socketPath)
 	c.socket, err = net.DialUnix("unix", nil, &net.UnixAddr{Name: c.socketPath, Net: "unix"})
 	return err
 }

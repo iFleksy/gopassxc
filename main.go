@@ -9,7 +9,6 @@ import (
 	"github.com/iFleksy/gopassxc/pkg/client"
 	"github.com/iFleksy/gopassxc/pkg/helpers"
 	"github.com/iFleksy/gopassxc/pkg/storage"
-	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -23,16 +22,22 @@ func JSONMarshal(t interface{}) ([]byte, error) {
 
 func main() {
 	// log.SetOutput(io.Discard)
-	log.SetLevel(log.DebugLevel)
 
 	var url string
+	var debug bool
 
 	flag.StringVar(&url, "u", "", "URL for search")
+	flag.BoolVar(&debug, "d", false, "debug")
 	flag.Parse()
+
+	if debug {
+		log.SetLevel(log.DebugLevel)
+	}
 
 	configDir, err := helpers.GetStoragePath()
 	if err != nil {
 		panic(err)
+
 	}
 	store := storage.Storage{StoragePath: configDir}
 	store.Load()
@@ -81,18 +86,15 @@ func main() {
 		panic(err)
 	}
 
-	assoName, assoKey := c.GetAssociatedProfile()
-	logrus.Infof("assoName: %s, assoKey: %s", assoName, assoKey)
-
 	e, err := c.GetLogins(url)
 	if err != nil {
 		panic(err)
 	}
 
-	jdata, err := JSONMarshal(e)
+	jData, err := JSONMarshal(e)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("%s", string(jdata))
+	fmt.Printf("%s", string(jData))
 }
