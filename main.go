@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -8,9 +9,21 @@ import (
 	"github.com/iFleksy/gopassxc/pkg/client"
 	"github.com/iFleksy/gopassxc/pkg/helpers"
 	"github.com/iFleksy/gopassxc/pkg/storage"
+	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
+func JSONMarshal(t interface{}) ([]byte, error) {
+	buffer := &bytes.Buffer{}
+	encoder := json.NewEncoder(buffer)
+	encoder.SetEscapeHTML(false)
+	err := encoder.Encode(t)
+	return buffer.Bytes(), err
+}
+
 func main() {
+	// log.SetOutput(io.Discard)
+	log.SetLevel(log.DebugLevel)
 
 	var url string
 
@@ -69,17 +82,17 @@ func main() {
 	}
 
 	assoName, assoKey := c.GetAssociatedProfile()
-	fmt.Printf("assoName: %s, assoKey: %s\n", assoName, assoKey)
+	logrus.Infof("assoName: %s, assoKey: %s", assoName, assoKey)
 
 	e, err := c.GetLogins(url)
 	if err != nil {
 		panic(err)
 	}
 
-	jdata, err := json.Marshal(e)
+	jdata, err := JSONMarshal(e)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("jdata: %s\n", jdata)
+	fmt.Printf("%s", string(jdata))
 }

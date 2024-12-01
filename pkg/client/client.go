@@ -4,10 +4,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 
 	"github.com/kevinburke/nacl"
+	"github.com/sirupsen/logrus"
 )
 
 type ServerResponse struct {
@@ -72,7 +72,7 @@ func NewClient(sockPath string, assoName string, assoB64Key string) Client {
 
 func (c *Client) Connect() error {
 	var err error
-	fmt.Printf("connect to socket %s\n", c.socketPath)
+	logrus.Infof("connect to socket %s", c.socketPath)
 	c.socket, err = net.DialUnix("unix", nil, &net.UnixAddr{Name: c.socketPath, Net: "unix"})
 	return err
 }
@@ -95,7 +95,7 @@ func (c *Client) sendEncryptedMessage(msg Message) (ServerResponse, error) {
 	if err != nil {
 		return response, err
 	}
-	fmt.Printf("send request: %s\n", string(rawRequest))
+	logrus.Debugf("send request: %s", string(rawRequest))
 
 	msg = Message{
 		Action:  msg.Action,
@@ -122,7 +122,7 @@ func (c *Client) sendEncryptedMessage(msg Message) (ServerResponse, error) {
 		return response, err
 	}
 
-	fmt.Printf("raw encoded response: %s\n", string(decryptedMsg))
+	logrus.Debugf("raw encoded response: %s", string(decryptedMsg))
 	response.DecryptedResponse = decryptedMsg
 	return response, nil
 }
@@ -140,7 +140,7 @@ func (c *Client) sendMessage(msg Message) (ServerResponse, error) {
 		return response, err
 	}
 
-	fmt.Printf("send message %s\n", string(content))
+	logrus.Debugf("send message %s", string(content))
 	_, err = c.socket.Write(content)
 	if err != nil {
 		return response, err
@@ -152,7 +152,7 @@ func (c *Client) sendMessage(msg Message) (ServerResponse, error) {
 		return response, err
 	}
 	buff = buff[0:count]
-	fmt.Printf("raw response: %s\n", string(buff))
+	logrus.Debugf("raw response: %s", string(buff))
 	err = json.Unmarshal(buff, &response)
 	if err != nil {
 		return response, err
