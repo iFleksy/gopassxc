@@ -76,10 +76,17 @@ func main() {
 	isInited := false
 	var client impl.Client
 	if err != nil {
-		client = impl.New(SOCKET_PATH, AssociatedName, identificationKey)
+		fmt.Println("Config not found, creating new client")
+		client = impl.New(impl.ClientOPTS{
+			SocketPath: SOCKET_PATH,
+		})
 	} else {
 		isInited = true
-		client = impl.New(SOCKET_PATH, c.AssociatedName, c.IdentificationKey)
+		client = impl.New(impl.ClientOPTS{
+			SocketPath:        SOCKET_PATH,
+			AssociatedName:    &c.AssociatedName,
+			IdentificationKey: &c.IdentificationKey,
+		})
 	}
 
 	err = client.Connect()
@@ -108,26 +115,23 @@ func main() {
 			IdentificationKey: akey,
 		}
 		saveConfig(c)
+	} else {
+		err = client.TestAssociate()
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
 	}
-	// else {
-	// 	err = client.TestAssociate()
-	// 	if err != nil {
-	// 		fmt.Println(err)
-	// 		os.Exit(1)
-	// 	}
-	// }
 
-	// fmt.Printf("\"%s\" \"%s\"\n", aid, akey)
+	resp, err := client.GetDBHash()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 
-	// resp, err := client.GetDBHash()
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	os.Exit(1)
-	// }
+	fmt.Println(resp)
 
-	// fmt.Println(resp)
-
-	err = client.GetLogins("dot.net")
+	err = client.GetLogins("http://dot.net")
 
 	if err != nil {
 		fmt.Println(err)

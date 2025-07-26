@@ -66,7 +66,7 @@ type DatabaseBaseBashResponse struct {
 
 type GetLoginKeys struct {
 	Id  string `json:"id"`
-	Key string `json:"Key"`
+	Key string `json:"key"`
 }
 
 type GetLoginRequest struct {
@@ -76,14 +76,14 @@ type GetLoginRequest struct {
 }
 
 type GetLoginsResponse struct {
-	Count   string         `json:"count"`
+	Count   int            `json:"count"`
 	Entries []client.Login `json:"entries"`
 }
 
 type TestAssociateRequest struct {
 	Action string `json:"action"`
 	Id     string `json:"id"`
-	Key    string `json:"Key"`
+	Key    string `json:"key"`
 }
 
 type TestAssociateResponse struct {

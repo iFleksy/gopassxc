@@ -9,6 +9,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type ClientOPTS struct {
+	SocketPath        string
+	AssociatedName    *string
+	IdentificationKey *string
+}
+
 type Client struct {
 	socket     net.Conn
 	socketPath string
@@ -23,17 +29,18 @@ type Client struct {
 
 const ClientID string = "gokeexc"
 
-func New(sockPath string, associatedName string, identificationKey string) Client {
+func New(opts ClientOPTS) Client {
 	crypt := NewCrypto()
 	client := Client{
-		socketPath:     sockPath,
-		crypt:          crypt,
-		ClientID:       ClientID + crypt.NewNonce(),
-		AssociatedName: associatedName,
+		socketPath: opts.SocketPath,
+		crypt:      crypt,
+		ClientID:   ClientID + crypt.NewNonce(),
 	}
-
-	if identificationKey != "" {
-		client.IdentificationKey = identificationKey
+	if opts.AssociatedName != nil {
+		client.AssociatedName = *opts.AssociatedName
+	}
+	if opts.IdentificationKey != nil {
+		client.IdentificationKey = *opts.IdentificationKey
 	} else {
 		client.IdentificationKey = crypt.NewNonce()
 	}
@@ -55,9 +62,15 @@ func (c *Client) Disconnect() error {
 }
 
 func (c *Client) encryptMessage(data any) (string, string, error) {
-	nonce, encrypted, err := c.crypt.EncryptMessage(data)
+	rawData, err := json.Marshal(data)
 	if err != nil {
-		return "", "", nil
+		return "", "", err
+	}
+
+	logrus.Debugf("[ RAW MESSAGE ]: %s", string(rawData))
+	nonce, encrypted, err := c.crypt.EncryptMessage(rawData)
+	if err != nil {
+		return "", "", err
 	}
 	return base64.StdEncoding.EncodeToString(nonce), base64.StdEncoding.EncodeToString(encrypted), nil
 }
@@ -210,7 +223,7 @@ func (c *Client) GetLogins(url string) error {
 		Action: action,
 		Url:    url,
 		Keys: []GetLoginKeys{
-			GetLoginKeys{
+			{
 				Id:  c.AssociatedName,
 				Key: c.IdentificationKey,
 			},
@@ -233,6 +246,19 @@ func (c *Client) TestAssociate() error {
 	var response TestAssociateResponse
 	err := c.sendEncryptedMessage(action, req, &response)
 	return err
+}
+
+func (c *Client) UnlockDatabase() error {
+	const action = "database-unlocked"
+	req := ActionRequest{
+		Action: action,
+	}
+
+	err := c.sendEncryptedMessage(action, req, nil)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // func (c *Client) TestAssociate() error {

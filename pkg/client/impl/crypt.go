@@ -2,7 +2,6 @@ package impl
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 
 	"github.com/kevinburke/nacl"
@@ -74,17 +73,12 @@ func (c *Crypt) NewNonce() string {
 	return base64.StdEncoding.EncodeToString((*nacl.NewNonce())[:])
 }
 
-func (c *Crypt) EncryptMessage(data any) ([]byte, []byte, error) {
+func (c *Crypt) EncryptMessage(data []byte) ([]byte, []byte, error) {
 	if len(c.peerKey) == 0 {
 		return []byte{}, []byte{}, ErrInvalidPeerKey
 	}
 
-	msgData, err := json.Marshal(data)
-	if err != nil {
-		return []byte{}, []byte{}, err
-	}
-
-	encryptedData := box.EasySeal(msgData, c.peerKey, c.privateKey)
+	encryptedData := box.EasySeal(data, c.peerKey, c.privateKey)
 
 	return encryptedData[:nacl.NonceSize], encryptedData[nacl.NonceSize:], nil
 }
