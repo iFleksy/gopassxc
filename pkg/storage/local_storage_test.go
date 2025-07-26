@@ -13,12 +13,12 @@ import (
 func TestStorage_AddProfile(t *testing.T) {
 	tests := []struct {
 		name       string
-		storage    *Storage
+		storage    *LocalStorage
 		newProfile *Profile
 	}{
 		{
 			name: "add new Profile",
-			storage: &Storage{
+			storage: &LocalStorage{
 				DefaultProfile: "default_profile",
 				Profiles: []*Profile{
 					{Name: "default_profile", Key: "key"},
@@ -41,7 +41,7 @@ func TestStorageExtractProfile(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		storage  *Storage
+		storage  *LocalStorage
 		wantName string
 		wantErr  bool
 		want     *Profile
@@ -49,7 +49,7 @@ func TestStorageExtractProfile(t *testing.T) {
 	}{
 		{
 			name: "existing profile",
-			storage: &Storage{
+			storage: &LocalStorage{
 				DefaultProfile: "default_profile",
 				Profiles: []*Profile{
 					{Name: "default_profile", Key: "key"},
@@ -62,7 +62,7 @@ func TestStorageExtractProfile(t *testing.T) {
 		},
 		{
 			name: "not found profile",
-			storage: &Storage{
+			storage: &LocalStorage{
 				DefaultProfile: "default_profile",
 				Profiles: []*Profile{
 					{Name: "default_profile", Key: "key"},
@@ -97,13 +97,13 @@ func TestStorage_Commit(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		storage  *Storage
+		storage  *LocalStorage
 		wantErr  bool
 		validate func(*testing.T, string)
 	}{
 		{
 			name: "successful Commit with DefaultProfile profile",
-			storage: &Storage{
+			storage: &LocalStorage{
 				DefaultProfile: "test_profile",
 				Profiles:       []*Profile{{Name: "test_profile", Key: "test_key"}},
 				StoragePath:    path.Join(tempDir, "config1.json"),
@@ -151,7 +151,7 @@ func TestStorage_Commit(t *testing.T) {
 		},
 		{
 			name: "successful Commit with multiple profiles",
-			storage: &Storage{
+			storage: &LocalStorage{
 				DefaultProfile: "test_profile1",
 				Profiles:       []*Profile{{Name: "test_profile1", Key: "test_key1"}, {Name: "test_profile2", Key: "test_key2"}},
 				StoragePath:    path.Join(tempDir, "config2.json"),
@@ -177,7 +177,7 @@ func TestStorage_Commit(t *testing.T) {
 		},
 		{
 			name: "Commit to invalid path",
-			storage: &Storage{
+			storage: &LocalStorage{
 				DefaultProfile: "test_profile",
 				Profiles:       []*Profile{{Name: "test_profile", Key: "test_key"}},
 				StoragePath:    path.Join(tempDir, "invalid", "config.json"),
@@ -210,18 +210,18 @@ func TestStorage_Load(t *testing.T) {
 	tests := []struct {
 		name      string
 		setupJSON string
-		storage   *Storage
+		storage   *LocalStorage
 		wantErr   bool
-		validate  func(*testing.T, *Storage)
+		validate  func(*testing.T, *LocalStorage)
 	}{
 		{
 			name:      "successful load with DefaultProfile profile",
 			setupJSON: `{"default_profile":"test_profile","profiles":[{"name":"test_profile","key":"test_key"}]}`,
-			storage: &Storage{
+			storage: &LocalStorage{
 				StoragePath: path.Join(tempDir, "config1.json"),
 			},
 			wantErr: false,
-			validate: func(t *testing.T, s *Storage) {
+			validate: func(t *testing.T, s *LocalStorage) {
 				assert.Equal(t, "test_profile", s.DefaultProfile)
 				assert.Len(t, s.Profiles, 1)
 				assert.Equal(t, "test_profile", s.Profiles[0].Name)
@@ -231,11 +231,11 @@ func TestStorage_Load(t *testing.T) {
 		{
 			name:      "successful load with multiple profiles",
 			setupJSON: `{"default_profile":"test_profile1","profiles":[{"name":"test_profile1","key":"test_key1"},{"name":"test_profile2","key":"test_key2"}]}`,
-			storage: &Storage{
+			storage: &LocalStorage{
 				StoragePath: path.Join(tempDir, "config2.json"),
 			},
 			wantErr: false,
-			validate: func(t *testing.T, s *Storage) {
+			validate: func(t *testing.T, s *LocalStorage) {
 				assert.Equal(t, "test_profile1", s.DefaultProfile)
 				assert.Len(t, s.Profiles, 2)
 				assert.Equal(t, "test_profile1", s.Profiles[0].Name)
@@ -247,7 +247,7 @@ func TestStorage_Load(t *testing.T) {
 		{
 			name:      "invalid json",
 			setupJSON: `invalid json content`,
-			storage: &Storage{
+			storage: &LocalStorage{
 				StoragePath: path.Join(tempDir, "invalid.json"),
 			},
 			wantErr: true,
