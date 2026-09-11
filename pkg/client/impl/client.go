@@ -1,18 +1,24 @@
 package impl
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net"
+	"strconv"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 )
+
+const IO_BUFFER_SIZE = 4096
 
 type ClientOPTS struct {
 	SocketPath        string
 	AssociatedName    *string
 	IdentificationKey *string
+	TriggerUnlock     *bool
 }
 
 type Client struct {
@@ -20,31 +26,43 @@ type Client struct {
 	socketPath string
 	crypt      Crypt
 
+	socketMutex sync.Mutex
+
 	// clientID - 24 bytes long random data, base64 encoded. This is used for a single session to identify different browsers if multiple are used with proxy application.
 	ClientID string
 
 	IdentificationKey string
 	AssociatedName    string
+	TriggerUnlock     bool
 }
 
 const ClientID string = "gokeexc"
 
-func New(opts ClientOPTS) Client {
+func New(opts ClientOPTS) (*Client, error) {
 	crypt := NewCrypto()
-	client := Client{
+	client := &Client{
 		socketPath: opts.SocketPath,
 		crypt:      crypt,
 		ClientID:   ClientID + crypt.NewNonce(),
 	}
+
 	if opts.AssociatedName != nil {
 		client.AssociatedName = *opts.AssociatedName
 	}
+
 	if opts.IdentificationKey != nil {
 		client.IdentificationKey = *opts.IdentificationKey
 	} else {
 		client.IdentificationKey = crypt.NewNonce()
 	}
-	return client
+
+	if opts.TriggerUnlock != nil {
+		client.TriggerUnlock = *opts.TriggerUnlock
+	} else {
+		client.TriggerUnlock = false
+	}
+
+	return client, nil
 }
 
 func (c *Client) Connect() error {
@@ -66,19 +84,17 @@ func (c *Client) encryptMessage(data any) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-
 	logrus.Debugf("[ RAW MESSAGE ]: %s", string(rawData))
-	nonce, encrypted, err := c.crypt.EncryptMessage(rawData)
+	encryptedData, err := c.crypt.EncryptMessage(rawData)
 	if err != nil {
 		return "", "", err
 	}
-	return base64.StdEncoding.EncodeToString(nonce), base64.StdEncoding.EncodeToString(encrypted), nil
+	return base64.StdEncoding.EncodeToString(encryptedData.Nonce), base64.StdEncoding.EncodeToString(encryptedData.EncryptedData), nil
 }
 
 func (c *Client) decryptMessage(nonce string, data string) ([]byte, error) {
 	encryptedData := nonce + data
 	decodedData, err := base64.StdEncoding.DecodeString(encryptedData)
-
 	if err != nil {
 		return []byte{}, err
 	}
@@ -86,9 +102,15 @@ func (c *Client) decryptMessage(nonce string, data string) ([]byte, error) {
 	return c.crypt.DecryptMessage(decodedData)
 }
 
-func (c *Client) sendEncryptedMessage(action string, data any, obj any) error {
+func (c *Client) getTriggerUnlock() string {
+	if c.TriggerUnlock {
+		return "true"
+	}
+	return "false"
+}
+
+func (c *Client) sendEncryptedMessage(ctx context.Context, action string, data any, obj any) error {
 	var response EncryptedResponse
-	logrus.Debugf("Action: %s\nsend message %#v \n", action, data)
 	nonce, encryptedMessage, err := c.encryptMessage(data)
 
 	if err != nil {
@@ -96,14 +118,16 @@ func (c *Client) sendEncryptedMessage(action string, data any, obj any) error {
 	}
 
 	req := Request{
-		Action:   action,
-		Message:  encryptedMessage,
-		Nonce:    nonce,
-		ClientID: c.ClientID,
+		Action:        action,
+		Message:       encryptedMessage,
+		Nonce:         nonce,
+		ClientID:      c.ClientID,
+		TriggerUnlock: c.getTriggerUnlock(),
 	}
 
-	logrus.Debugf("send request: %s", req)
-	rawResponse, err := c.sendMessage(req)
+	logrus.Debugf("send request: %#v", req)
+
+	rawResponse, err := c.sendMessage(ctx, req)
 	logrus.Debugf("%s\n", rawResponse)
 	if err != nil {
 		return err
@@ -111,6 +135,18 @@ func (c *Client) sendEncryptedMessage(action string, data any, obj any) error {
 
 	if err = json.Unmarshal(rawResponse, &response); err != nil {
 		return err
+	}
+
+	if response.ErrorCode != "" {
+		errorCode, err := strconv.Atoi(response.ErrorCode)
+		if err != nil {
+			return errors.New(response.Error)
+		}
+		logrus.Debugf("error code: %d", errorCode)
+		err = HandleErrorCode(errorCode)
+		if err != nil {
+			return err
+		}
 	}
 
 	if response.Error != "" {
@@ -136,165 +172,53 @@ func (c *Client) sendEncryptedMessage(action string, data any, obj any) error {
 	return nil
 }
 
-func (c *Client) sendMessage(req any) ([]byte, error) {
+func (c *Client) sendMessage(ctx context.Context, req any) ([]byte, error) {
+	// Блокируем доступ к сокету для предотвращения race conditions
+	c.socketMutex.Lock()
+	defer c.socketMutex.Unlock()
+
 	content, err := json.Marshal(req)
 	if err != nil {
 		return []byte{}, err
 	}
-	_, err = c.socket.Write(content)
-	if err != nil {
-		return []byte{}, err
+
+	// Создаем каналы для результатов
+	writeErrChan := make(chan error, 1)
+	type readResult struct {
+		data []byte
+		err  error
+	}
+	readChan := make(chan readResult, 1)
+
+	go func() {
+		_, err := c.socket.Write(content)
+		writeErrChan <- err
+	}()
+
+	select {
+	case <-ctx.Done():
+		return []byte{}, ctx.Err()
+	case err := <-writeErrChan:
+		if err != nil {
+			return []byte{}, err
+		}
 	}
 
-	buff := make([]byte, 4096)
-	count, err := c.socket.Read(buff)
-	if err != nil {
-		return []byte{}, err
+	go func() {
+		buff := make([]byte, IO_BUFFER_SIZE)
+		count, err := c.socket.Read(buff)
+		if err != nil {
+			readChan <- readResult{nil, err}
+		} else {
+			readChan <- readResult{buff[0:count], nil}
+		}
+	}()
+
+	// Ждем завершения чтения или timeout
+	select {
+	case <-ctx.Done():
+		return []byte{}, ctx.Err()
+	case result := <-readChan:
+		return result.data, result.err
 	}
-	return buff[0:count], nil
 }
-
-func (c *Client) ChangePublicKeys() (string, error) {
-	message := RequestChangePublicKeys{
-		Action:    "change-public-keys",
-		PublicKey: c.crypt.PublicKey(),
-		Nonce:     c.crypt.NewNonce(),
-		ClientID:  c.ClientID,
-	}
-
-	rawResponse, err := c.sendMessage(message)
-	if err != nil {
-		return "", err
-	}
-
-	resp := ChangePubKeysResponse{}
-	err = json.Unmarshal(rawResponse, &resp)
-	if err != nil {
-		return "", err
-	}
-
-	if resp.PublicKey == "" {
-		return "", errors.New("change-public-keys failed")
-	}
-
-	c.crypt.SetPeerKey(resp.PublicKey)
-	return resp.PublicKey, nil
-}
-
-func (c *Client) GetDBHash() (string, error) {
-	const action = "get-databasehash"
-
-	req := ActionRequest{
-		Action: action,
-	}
-
-	var data DatabaseBaseBashResponse
-	err := c.sendEncryptedMessage(action, req, &data)
-	if err != nil {
-		return "", err
-	}
-	return data.Hash, nil
-}
-
-func (c *Client) Associate() (string, string, error) {
-	const action = "associate"
-
-	msg := AssociateRequest{
-		Action: action,
-		Key:    c.crypt.PublicKey(),
-		IDKey:  c.IdentificationKey,
-	}
-
-	data := AssociateResponse{}
-
-	err := c.sendEncryptedMessage(action, msg, &data)
-
-	if err != nil {
-		return "", "", err
-	}
-
-	c.AssociatedName = data.ID
-	return c.AssociatedName, c.IdentificationKey, err
-}
-
-func (c *Client) GetLogins(url string) error {
-	const action = "get-logins"
-	req := GetLoginRequest{
-		Action: action,
-		Url:    url,
-		Keys: []GetLoginKeys{
-			{
-				Id:  c.AssociatedName,
-				Key: c.IdentificationKey,
-			},
-		},
-	}
-
-	var response GetLoginsResponse
-	err := c.sendEncryptedMessage(action, req, &response)
-	return err
-
-}
-
-func (c *Client) TestAssociate() error {
-	const action = "test-associate"
-	req := TestAssociateRequest{
-		Action: action,
-		Id:     c.AssociatedName,
-		Key:    c.IdentificationKey,
-	}
-	var response TestAssociateResponse
-	err := c.sendEncryptedMessage(action, req, &response)
-	return err
-}
-
-func (c *Client) UnlockDatabase() error {
-	const action = "database-unlocked"
-	req := ActionRequest{
-		Action: action,
-	}
-
-	err := c.sendEncryptedMessage(action, req, nil)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// func (c *Client) TestAssociate() error {
-// 	msg := Message{
-// 		Action: ActionTestAssociate,
-// 		Key:    NaclKeyToB64(c.crypt.AssociatedKey),
-// 		ID:     c.crypt.AssociatedName,
-// 	}
-
-// 	_, err := c.sendEncryptedMessage(msg)
-// 	return err
-// }
-
-// func (c *Client) GetLogins(url string) ([]*Entry, error) {
-// 	msg := Message{
-// 		Action: ActionGetLogins,
-// 		URL:    url,
-// 		Keys: []*MessageKeys{
-// 			{
-// 				ID:  c.crypt.AssociatedName,
-// 				Key: NaclKeyToB64(c.crypt.AssociatedKey),
-// 			},
-// 		},
-// 	}
-
-// 	response, err := c.sendEncryptedMessage(msg)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	var data EntriesResponse
-
-// 	err = json.Unmarshal(response.DecryptedResponse, &data)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	return data.Entries, nil
-// }

@@ -1,12 +1,12 @@
 package impl
 
 import (
+	"crypto/rand"
 	"encoding/base64"
 	"errors"
 
 	"github.com/kevinburke/nacl"
 	"github.com/kevinburke/nacl/box"
-	"github.com/kevinburke/nacl/scalarmult"
 )
 
 var (
@@ -41,19 +41,26 @@ func B64ToNaclKey(b64Key string) nacl.Key {
 	return key
 }
 
+type EncryptedMessage struct {
+	EncryptedData []byte `json:"encrypted_data"`
+	Nonce         []byte `json:"nonce"`
+}
+
 type Crypt struct {
-	publicKey  nacl.Key
-	privateKey nacl.Key
-	peerKey    nacl.Key
+	publicKey     nacl.Key
+	privateKey    nacl.Key
+	peerPublicKey nacl.Key
 }
 
 func NewCrypto() Crypt {
-	key := nacl.NewKey()
-	pubKey := scalarmult.Base(key)
+	publicKey, privateKey, err := box.GenerateKey(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
 
 	return Crypt{
-		publicKey:  pubKey,
-		privateKey: key,
+		publicKey:  publicKey,
+		privateKey: privateKey,
 	}
 }
 
@@ -66,27 +73,30 @@ func (c *Crypt) PrivateKey() string {
 }
 
 func (c *Crypt) SetPeerKey(k string) {
-	c.peerKey = B64ToNaclKey(k)
+	c.peerPublicKey = B64ToNaclKey(k)
 }
 
 func (c *Crypt) NewNonce() string {
 	return base64.StdEncoding.EncodeToString((*nacl.NewNonce())[:])
 }
 
-func (c *Crypt) EncryptMessage(data []byte) ([]byte, []byte, error) {
-	if len(c.peerKey) == 0 {
-		return []byte{}, []byte{}, ErrInvalidPeerKey
+func (c *Crypt) EncryptMessage(data []byte) (EncryptedMessage, error) {
+	if len(c.peerPublicKey) == 0 {
+		return EncryptedMessage{}, ErrInvalidPeerKey
 	}
 
-	encryptedData := box.EasySeal(data, c.peerKey, c.privateKey)
+	encryptedData := box.EasySeal(data, c.peerPublicKey, c.privateKey)
 
-	return encryptedData[:nacl.NonceSize], encryptedData[nacl.NonceSize:], nil
+	return EncryptedMessage{
+		EncryptedData: encryptedData[nacl.NonceSize:],
+		Nonce:         encryptedData[:nacl.NonceSize],
+	}, nil
 }
 
 func (c *Crypt) DecryptMessage(encryptedData []byte) ([]byte, error) {
-	if len(c.peerKey) == 0 {
+	if len(c.peerPublicKey) == 0 {
 		return []byte{}, errors.New("ErrInvalidPeerKey")
 	}
 
-	return box.EasyOpen(encryptedData, c.peerKey, c.privateKey)
+	return box.EasyOpen(encryptedData, c.peerPublicKey, c.privateKey)
 }

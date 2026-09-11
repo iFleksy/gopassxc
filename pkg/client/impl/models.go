@@ -1,16 +1,15 @@
 package impl
 
 import (
-	"encoding/json"
-
 	"github.com/iFleksy/gopassxc/pkg/client"
 )
 
 type Request struct {
-	Action   string `json:"action"`
-	Message  string `json:"message,omitempty"`
-	Nonce    string `json:"nonce"`
-	ClientID string `json:"clientID,omitempty"`
+	Action        string `json:"action"`
+	Message       string `json:"message,omitempty"`
+	Nonce         string `json:"nonce"`
+	ClientID      string `json:"clientID,omitempty"`
+	TriggerUnlock string `json:"triggerUnlock"`
 }
 
 type RequestChangePublicKeys struct {
@@ -21,12 +20,12 @@ type RequestChangePublicKeys struct {
 }
 
 type EncryptedResponse struct {
-	Action            string          `json:"action"`
-	Message           string          `json:"message,omitempty"`
-	Nonce             string          `json:"nonce"`
-	Error             string          `json:"error,omitempty"`
-	ErrorCode         json.RawMessage `json:"errorCode,omitempty"`
-	DecryptedResponse []byte          `json:"-"`
+	Action            string `json:"action"`
+	Message           string `json:"message,omitempty"`
+	Nonce             string `json:"nonce"`
+	Error             string `json:"error,omitempty"`
+	ErrorCode         string `json:"errorCode,omitempty"`
+	DecryptedResponse []byte `json:"-"`
 }
 
 type ChangePubKeysResponse struct {
@@ -49,7 +48,7 @@ type EntriesResponse struct {
 }
 
 type AssociateRequest struct {
-	Action string `json"action"`
+	Action string `json:"action"`
 	Key    string `json:"key"`
 	IDKey  string `json:"idKey"`
 }
@@ -81,9 +80,10 @@ type GetLoginsResponse struct {
 }
 
 type TestAssociateRequest struct {
-	Action string `json:"action"`
-	Id     string `json:"id"`
-	Key    string `json:"key"`
+	Action        string `json:"action"`
+	Id            string `json:"id"`
+	Key           string `json:"key"`
+	TriggerUnlock string `json:"triggerUnlock,omitempty"`
 }
 
 type TestAssociateResponse struct {

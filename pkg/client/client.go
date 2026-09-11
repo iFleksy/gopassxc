@@ -1,5 +1,8 @@
 package client
 
+import "context"
+
 type ClientInterface interface {
-	GetLogins(url string) ([]Login, error)
+	GetLogins(ctx context.Context, url string) ([]Login, error)
+	Associate(ctx context.Context) (AssociateResponse, error)
 }
